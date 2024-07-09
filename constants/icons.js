@@ -1,13 +1,13 @@
-import groceries from "../assets/icons/groceries.png";
-import home from "../assets/icons/home.png";
-import profile from "../assets/icons/profile.png";
-import eye from "../assets/icons/eye.png"
-import eyeHide from "../assets/icons/eye-hide.png"
+import groceries from '../assets/icons/groceries-icon.png';
+import home from '../assets/icons/home-icon.png';
+import profile from '../assets/icons/profile-icon.png';
+import eye from '../assets/icons/eye.png';
+import eyeHide from '../assets/icons/eye-hide.png';
 
 export default {
-    groceries,
-    home,
-    profile,
-    eye,
-    eyeHide,
+  groceries,
+  home,
+  profile,
+  eye,
+  eyeHide,
 };
