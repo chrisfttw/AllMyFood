@@ -1,77 +1,92 @@
-import { View, Text, ScrollView } from 'react-native';
 import React, { useState } from 'react';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
-import { Link } from 'expo-router';
+import FormField from '../../components/FormField';
+import { Link, useNavigation } from 'expo-router';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../../config/firebase';
 
 const SignUp = () => {
+  const navigation = useNavigation();
+
   const [form, setForm] = useState({
     username: '',
     email: '',
     password: ''
   });
-
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleInputChange = (field, value) => {
+    setForm({ ...form, [field]: value });
+  };
 
   const submit = async () => {
     setIsSubmitting(true);
     try {
       const { email, password } = form;
-      await auth().createUserWithEmailAndPassword(email, password);
-      alert('User registered successfully!');
+      if (email && password) {
+        await createUserWithEmailAndPassword(auth, email, password);
+        navigation.navigate('(pages)'); // Navigate to pages screen upon successful signup
+        Alert.alert('Success', 'User registered successfully!');
+      } else {
+        throw new Error('Please fill out all fields.');
+      }
     } catch (error) {
-      alert(error.message);
+      Alert.alert('Error', error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
+    <SafeAreaView className="bg-primary h-full"> 
       <ScrollView>
         <View className="w-full justify-center min-h-[85vh] px-4 my-6">
-          <Text className="text-2xl text-white mt-10">Sign Up</Text>
+          <Text className="text-2xl text-white mt-10">Log in to All My Groceries</Text>
 
           <FormField 
-            title="Username"
+            //title="Username"
+            placeholder="Username"
             value={form.username}
-            handleChangeText={(e) => setForm({ ...form, username: e })}
-            otherStyles="mt-7"
+            handleChangeText={(value) => handleInputChange('username', value)}
+            otherStyles="mt-5"
           />
 
           <FormField 
-            title="Email"
+            //title="Email"
+            placeholder="Email"
             value={form.email}
-            handleChangeText={(e) => setForm({ ...form, email: e })}
-            otherStyles="mt-7"
+            handleChangeText={(value) => handleInputChange('email', value)}
+            otherStyles="mt-0"
             keyboardType="emailaddress"
           />
 
           <FormField 
-            title="Password"
+            //title="Password"
+            placeholder="Password"
             value={form.password}
-            handleChangeText={(e) => setForm({ ...form, password: e })}
-            otherStyles="mt-7"
+            handleChangeText={(value) => handleInputChange('password', value)}
+            otherStyles="mt-0"
           />
 
           <CustomButton 
-            title="Sign Up"
+            title="Sign In"
             handlePress={submit}
-            containerStyles="mt-7"
+            containerStyles="mt-16"
             isLoading={isSubmitting}
           />
 
           <View className="justify-center pt-5 flex-row gap-2">
-            <Text className="text-lg text-white">
-              Have an account already?
-            </Text>
-            <Link href="/signin" className="text-lg text-blue-500">Sign In</Link>
+            {/* <Text className="text-lg text-white">
+              Already have an account?
+            </Text> */}
+            <Link href="/signin" className="text-lg text-blue-500">Already have an account?</Link>
           </View>
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
+  )
 };
 
 export default SignUp;

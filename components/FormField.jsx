@@ -16,12 +16,14 @@ const FormField = ({ title, value, placeholder, handleChangeText, otherStyles, .
                     placeholder={placeholder}
                     placeholderTextColor="#7b7b8b"
                     onChangeText={handleChangeText}
-                    secureTextEntry={title === 'Password' && !showPassword}
+                    secureTextEntry={placeholder === 'Password' && !showPassword}
                 />
 
-                {title === 'Password' && (
+                {placeholder === 'Password' && (
                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                        <Image source={!showPassword ? icons.eye : icons.eyeHide} className="w-8 h-8" resizeMode='contain'/>
+                        <Image source={!showPassword ? icons.eye : icons.eyeHide}
+                        style={{ width: 32, height: 32, opacity:0.5}}
+                        resizeMode='contain'/>
                     </TouchableOpacity>
                 )}
             </View>
