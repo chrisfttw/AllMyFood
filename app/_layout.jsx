@@ -1,5 +1,6 @@
-import { Stack } from 'expo-router';
 import React from 'react';
+import { AuthProvider } from '../app/authContext';
+import { Stack } from 'expo-router';
 import useAuth from '../hooks/useAuth';
 
 const RootLayout = () => {
@@ -10,7 +11,7 @@ const RootLayout = () => {
       <Stack>
         <Stack.Screen name='index' options={{ headerShown: false }} />
         <Stack.Screen name='(auth)' options={{ headerShown: false }} />
-        <Stack.Screen name='(pages)' options={{ headerShown: false,  gestureEnabled: false }} />
+        <Stack.Screen name='(pages)' options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     );
   } else {
@@ -18,10 +19,16 @@ const RootLayout = () => {
       <Stack>
         <Stack.Screen name='index' options={{ headerShown: false }} />
         <Stack.Screen name='(auth)' options={{ headerShown: false }} />
-        <Stack.Screen name='(pages)' options={{ headerShown: false, gestureEnabled: false }} />
+        {/* <Stack.Screen name='(pages)' options={{ headerShown: false, gestureEnabled: false }} /> */}
       </Stack>
     );
   }
 };
 
-export default RootLayout;
+const RootLayoutWithAuth = () => (
+  <AuthProvider>
+    <RootLayout />
+  </AuthProvider>
+);
+
+export default RootLayoutWithAuth;

@@ -1,10 +1,10 @@
-import { View, Text, ScrollView, Alert } from 'react-native'
+import { View, Text, ScrollView, Alert, TouchableWithoutFeedback, Keyboard } from 'react-native'
 import React, { useState } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import FormField from '../../components/FormField'
 import CustomButton from '../../components/CustomButton'
 import { Link, useNavigation } from 'expo-router'
-import { signInWithEmailAndPassword } from 'firebase/auth'; // Import the signInWithEmailAndPassword function from Firebase auth
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 
 const SignIn = () => {
@@ -31,8 +31,7 @@ const SignIn = () => {
         Alert.alert('Missing Fields', 'Please fill out all fields')
       }
     } catch (error) {
-      console.error('Error:', error.message); // Log the error to console for debugging
-      // Alert.alert('Error', error.message); // Remove this line
+      console.error('Error:', error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -40,7 +39,7 @@ const SignIn = () => {
 
   return (
     <SafeAreaView className="bg-primary h-full"> 
-      <ScrollView>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View className="w-full justify-center min-h-[85vh] px-4 my-6">
           <Text className="text-2xl text-white mt-10">Log in to All My Groceries</Text>
 
@@ -68,14 +67,16 @@ const SignIn = () => {
             isLoading={isSubmitting}
           />
 
-          <View className="justify-center pt-5 flex-row gap-2">
-            {/* <Text className="text-lg text-white">
-              Don't have an account?
-            </Text> */}
-            <Link href="/signup" className="text-lg text-blue-500">Create an account</Link>
-          </View>
+          {/* <View className="justify-center flex-row gap-2 p-5" style={{ position: 'absolute', bottom: 0, width: '100%' }}>
+            <Text className="text-lg text-white">Don't have an account?</Text>
+            <Link href="/signup" className="text-lg text-blue-600">Sign up</Link>
+          </View> */}
         </View>
-      </ScrollView>
+        </TouchableWithoutFeedback>
+        <View className="justify-center flex-row gap-2 p-5" style={{ position: 'relative', bottom: 50, width: '100%' }}>
+          <Text className="text-base text-white">Don't have an account?</Text>
+          <Link href="/signup" className="text-base text-blue-600">Sign up</Link>
+        </View>
     </SafeAreaView>
   )
 }
