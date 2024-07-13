@@ -1,7 +1,7 @@
 import React from 'react';
 import { AuthProvider } from '../app/authContext';
 import { Stack } from 'expo-router';
-import useAuth from '../hooks/useAuth';
+import useAuth from '../hooks/useAuth.js';
 
 const RootLayout = () => {
   const { user } = useAuth();
@@ -19,7 +19,7 @@ const RootLayout = () => {
       <Stack>
         <Stack.Screen name='index' options={{ headerShown: false }} />
         <Stack.Screen name='(auth)' options={{ headerShown: false }} />
-        {/* <Stack.Screen name='(pages)' options={{ headerShown: false, gestureEnabled: false }} /> */}
+        <Stack.Screen name='(pages)' options={{ headerShown: false, gestureEnabled: false }} />
       </Stack>
     );
   }
