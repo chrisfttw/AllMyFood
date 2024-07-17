@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, TouchableWithoutFeedback, Keyboard, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Menu, Provider, Divider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { db, auth } from '../../config/firebase';
+import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 const Groceries = () => {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [filterMenuVisible, setFilterMenuVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [addAnotherModalVisible, setAddAnotherModalVisible] = useState(false);
   const [text, setText] = useState('');
   const textInputRef = useRef(null);
   const [quantity, setQuantity] = useState(0);
@@ -17,12 +21,11 @@ const Groceries = () => {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(null);
   const [items, setItems] = useState([
-    { label: 'Apple', value: 'apple' },
-    { label: 'Banana', value: 'banana' },
-    { label: 'Apple', value: 'apple2' },
-    { label: 'Apple', value: 'apple3' },
-    { label: 'Apple', value: 'apple4' },
-    { label: 'Apple', value: 'apple5' }
+    { label: 'Fruit', value: 'fruit' },
+    { label: 'Vegatable', value: 'vegatable' },
+    { label: 'Grain', value: 'grain' },
+    { label: 'Protein', value: 'protein' },
+    { label: 'Dairy', value: 'dairy' },
   ]);
 
   const incrementCount = () => {
@@ -48,18 +51,10 @@ const Groceries = () => {
     { name: 'Sumo Orange', expiration: '2024-07-12' },
   ]);
 
-  const [otherGroceries, setOtherGroceries] = useState([
-    { name: 'Milk', category: 'Dairy' },
-    { name: 'Bread', category: 'Bakery' },
-    { name: 'Eggs', category: 'Dairy' },
-    { name: 'Chicken', category: 'Meat' },
-    { name: 'Apples', category: 'Fruit' },
-    { name: 'Carrots', category: 'Vegetable' },
-    { name: 'Rice', category: 'Grain' },
-    { name: 'Pasta', category: 'Grain' },
-    { name: 'Salad Mix', category: 'Vegetable' },
-    { name: 'Yogurt', category: 'Dairy' },
-  ]);
+  const [otherGroceries, setOtherGroceries] = useState([]);
+  const [user, setUser] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   useEffect(() => {
     const today = new Date();
@@ -71,6 +66,24 @@ const Groceries = () => {
     });
     setExpiringSoon(updatedExpiringSoon);
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      if (user) {
+        setUser(user);
+        fetchGroceries(user.uid);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const fetchGroceries = async (uid) => {
+    const groceriesRef = collection(db, `users/${uid}/groceries`);
+    const querySnapshot = await getDocs(groceriesRef);
+    const groceriesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setOtherGroceries(groceriesList);
+  };
+
 
   const handleClose = () => {
     if (text.trim().length > 0) {
@@ -102,6 +115,109 @@ const Groceries = () => {
     }
   };
 
+  const saveGroceryItem = async () => {
+    if (text.trim().length > 0 && selectedType && quantity > 0) {
+      setIsSubmitting(true);
+      try {
+        await addDoc(collection(db, `users/${user.uid}/groceries`), {
+          name: text,
+          category: selectedType,
+          quantity: quantity,
+        });
+        setText('');
+        setQuantity(0);
+        setValue(null);
+        setSelectedType('');
+        setModalVisible(false);
+        fetchGroceries(user.uid);
+        setAddAnotherModalVisible(true);
+      } catch (error) {
+        console.error('Error adding document: ', error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      Alert.alert('Please enter all fields');
+    }
+  };
+
+  const handleAddAnother = () => {
+    setAddAnotherModalVisible(false);
+    setModalVisible(true);
+  };
+
+  const handleFinish = () => {
+    setAddAnotherModalVisible(false);
+  };
+
+  const handleEditItem = async () => {
+    if (editText.trim().length > 0 && editSelectedType && editQuantity > 0) {
+      setIsSubmitting(true);
+      try {
+        await updateDoc(doc(db, `users/${user.uid}/groceries`, selectedItem.id), {
+          name: editText,
+          category: editSelectedType,
+          quantity: editQuantity,
+        });
+        setEditText('');
+        setEditQuantity(0);
+        setValue(null);
+        setEditSelectedType('');
+        setEditModalVisible(false);
+        fetchGroceries(user.uid);
+      } catch (error) {
+        console.error('Error updating document: ', error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      Alert.alert('Please enter all fields');
+    }
+  };
+
+  const handleDeleteItem = async (id) => {
+    try {
+      if (!id) {
+        console.error("No ID provided for deletion");
+        return;
+      }
+
+      const user = auth.currentUser;
+      if (!user) {
+        console.error("No user is authenticated");
+        return;
+      }
+
+      const groceryDocPath = `users/${user.uid}/groceries/${id}`;
+      const groceryDocRef = doc(db, groceryDocPath);
+
+      await deleteDoc(groceryDocRef);
+
+      setOtherGroceries((prevGroceries) => prevGroceries.filter(item => item.id !== id));
+      setExpiringSoon((prevGroceries) => prevGroceries.filter(item => item.id !== id));
+      console.log('Document successfully deleted!');
+    } catch (error) {
+      console.error("Error deleting document: ", error);
+    }
+  };
+
+  const confirmDelete = (id) => {
+    Alert.alert(
+      "Delete Grocery",
+      "Are you sure you want to delete this item?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "OK",
+          onPress: () => handleDeleteItem(id)
+        }
+      ],
+      { cancelable: false }
+    );
+  };
 
   return (
     <Provider>
@@ -127,11 +243,11 @@ const Groceries = () => {
                   <MaterialIcons name="close" size={34} color="#16c359" />
                 </TouchableOpacity>
 
-                <View className="mt-52">
+                <View className="mt-44">
                   <Text className="text-3xl font-bold">Enter Your Grocery</Text>
                 </View>
                 <TouchableOpacity onPress={() => textInputRef.current.focus()} className="w-64 mt-10">
-                  <View className="border-2 border-gray-200 w-full h-12 p-3 rounded-lg focus:border-primary flex-row items-center">
+                  <View className="border-2 border-gray-200 w-full h-12 p-3 rounded-full focus:border-primary flex-row items-center">
                     <TextInput
                       ref={textInputRef}
                       value={text}
@@ -151,13 +267,13 @@ const Groceries = () => {
 
                 <View className="w-1/2 flex-row justify-between px-5 align-center mt-5">
                   <TouchableOpacity onPress={decrementCount}>
-                    <MaterialCommunityIcons name="minus-box" size={40} color="#16c359" />
+                    <MaterialCommunityIcons name="minus-circle" size={40} color="#16c359" />
                   </TouchableOpacity>
                   <Text className="text-3xl font-normal">
                     {quantity}
                   </Text>
                   <TouchableOpacity onPress={incrementCount}>
-                    <MaterialCommunityIcons name="plus-box" size={40} color="#16c359" />
+                    <MaterialCommunityIcons name="plus-circle" size={40} color="#16c359" />
                   </TouchableOpacity>
                 </View>
                 <Text className="font-semibold">
@@ -173,26 +289,64 @@ const Groceries = () => {
                     setValue={setValue}
                     setItems={setItems}
                     placeholder="Select Type"
+                    placeholderStyle={{ color: "#7b7b8b" }}
+                    arrowIconStyle={{ width: 20 }}
                     maxHeight={150}
+                    itemSeparator={true}
                     containerStyle={{ height: 50, width: '100%' }}
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#ccc', borderWidth: 2, borderRadius: 10 }}
-                    dropDownStyle={{ backgroundColor: '#FFFFFF', maxHeight: 24 }}
-                    onChangeItem={(item) => setSelectedType(item.value)}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#e5e7eb', borderWidth: 2, borderRadius: 30 }}
+                    dropDownContainerStyle={{ borderColor: "#e5e7eb", borderWidth: 2, borderRadius: 30 }}
+                    itemSeparatorStyle={{ backgroundColor: "#e5e7eb", marginVertical: 6 }}
+                    textStyle={{ fontSize: 14, color: '#000000' }}
+                    onChangeValue={(item) => setSelectedType(item)}
                   />
                 </View>
 
-                <View className="absolute bottom-10 w-full align-center">
-                  <TouchableOpacity onPress={() => { }} className="bg-primary py-4 rounded-md w-full mb-5">
-                    <Text className="text-white text-center text-base font-semibold">Submit Grocery</Text>
+                <View className="absolute bottom-10 w-full justify-center align-center">
+                  <TouchableOpacity
+                    onPress={() => saveGroceryItem()}
+                    className="bg-primary py-4 rounded-full w-full h-14 mb-5"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text className="text-white text-center text-lg font-bold">Add Grocery</Text>
+                    )}
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleClose} className="bg-slate-200 py-4 rounded-md w-full">
-                    <Text className="text-black text-center text-base font-semibold">Cancel Grocery</Text>
+                  <TouchableOpacity onPress={handleClose} className="bg-slate-200 py-4 rounded-full w-full h-14 mb-5">
+                    <Text className="text-black text-center text-lg font-bold">Cancel Grocery</Text>
                   </TouchableOpacity>
                 </View>
 
               </View>
             </View>
           </TouchableWithoutFeedback>
+        </Modal>
+
+        <Modal
+          transparent={true}
+          visible={addAnotherModalVisible}
+          animationType="slide"
+          onRequestClose={() => setAddAnotherModalVisible(false)}
+        >
+          <View className="w-full h-full bg-white pt-16 px-8 items-center flex-col">
+            <View className="w-full h-full my-64">
+              <Text className="text-2xl text-center font-semibold mb-5">Would you like to add another grocery item?</Text>
+              <TouchableOpacity
+                onPress={handleAddAnother}
+                className="bg-primary py-4 rounded-full w-full h-14 mb-5"
+              >
+                <Text className="text-white text-center text-lg font-bold">Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleFinish}
+                className="bg-slate-200 py-4 rounded-full w-full h-14 mb-5"
+              >
+                <Text className="text-black text-center text-lg font-bold">No</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
         <View className="px-4 py-6">
@@ -225,6 +379,10 @@ const Groceries = () => {
             <Menu.Item onPress={() => { }} title="A-Z" />
             <Divider />
             <Menu.Item onPress={() => { }} title="Z-A" />
+            <Divider />
+            <Menu.Item onPress={() => { }} title="Expiring Soon" />
+            <Divider />
+            <Menu.Item onPress={() => { }} title="Expiring Latest" />
           </Menu>
 
           <Menu
@@ -251,8 +409,23 @@ const Groceries = () => {
           <Text className="text-xl font-bold mb-2">Other Groceries</Text>
           <ScrollView style={{ maxHeight: 'calc(100% - 90px)' }}>
             {otherGroceries.map((item, index) => (
-              <View key={index} className="bg-gray-200 rounded-lg px-4 py-2 m-2 h-24">
+              <View key={index} className="bg-gray-200 rounded-lg px-4 py-2 m-2 h-24 flex-row justify-between items-center">
                 <Text>{item.name}</Text>
+                <Text>{item.quantity}</Text>
+                <View className="flex-col">
+                  <TouchableOpacity className="mb-5" onPress={() => {
+                    setEditText(item.name);
+                    setEditQuantity(item.quantity);
+                    setEditSelectedType(item.category);
+                    setSelectedItem(item);
+                    setEditModalVisible(true);
+                  }}>
+                    <MaterialIcons name="edit" size={24} color="#16c359" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => confirmDelete(item.id)}>
+                    <MaterialIcons name="delete" size={24} color="#DC143C" />
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </ScrollView>
