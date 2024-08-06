@@ -4,8 +4,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Menu, Provider, Divider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DropDownPicker from 'react-native-dropdown-picker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { db, auth } from '../../config/firebase';
-import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc, Timestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 const Groceries = () => {
@@ -16,9 +17,10 @@ const Groceries = () => {
   const [text, setText] = useState('');
   const textInputRef = useRef(null);
   const [quantity, setQuantity] = useState(0);
-  const [typeMenuVisible, setTypeMenuVisible] = useState(false);
+  const [date, setDate] = useState(new Date());
+  const [dateVisible, setDateVisible] = useState(false);
   const [selectedType, setSelectedType] = useState('');
-  const [open, setOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(false);
   const [value, setValue] = useState(null);
   const [items, setItems] = useState([
     { label: 'Fruit', value: 'fruit' },
@@ -38,34 +40,54 @@ const Groceries = () => {
     }
   };
 
-  const [expiringSoon, setExpiringSoon] = useState([
-    { name: 'Orange', expiration: '2024-08-01' },
-    { name: 'Oreos', expiration: '2024-08-05' },
-    { name: 'Apple', expiration: '2024-08-10' },
-    { name: 'Ben & Jerrys Ice Cream', expiration: '2024-08-15' },
-    { name: 'Takis', expiration: '2024-08-20' },
-    { name: 'Hotdog Buns', expiration: '2024-07-15' },
-    { name: 'Instant Yeast', expiration: '2024-07-25' },
-    { name: 'Modelo', expiration: '2024-08-28' },
-    { name: 'Spinach', expiration: '2024-09-14' },
-    { name: 'Sumo Orange', expiration: '2024-07-12' },
-  ]);
+  const showDatePicker = () => {
+    setDateVisible(true);
+  };
+
+  const hideDatePicker = () => {
+    setDateVisible(false);
+  };
+
+  const handleConfirm = (selectedDate) => {
+    setDate(selectedDate);
+    hideDatePicker();
+  };
+
+  const formatDate = (timestamp) => {
+    if (timestamp instanceof Timestamp) {
+      const date = timestamp.toDate();
+      return date.toLocaleDateString();
+    } else {
+      console.error('Invalid timestamp:', timestamp);
+      return 'Invalid date';
+    }
+  };
 
   const [otherGroceries, setOtherGroceries] = useState([]);
   const [user, setUser] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
 
-  useEffect(() => {
+  const calculateDaysUntilExpiration = (expirationDate) => {
+    if (!expirationDate) return null;
     const today = new Date();
-    const updatedExpiringSoon = expiringSoon.map(item => {
-      const expirationDate = new Date(item.expiration);
-      const timeDiff = expirationDate.getTime() - today.getTime();
-      const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-      return { ...item, daysUntilExpiration: daysDiff };
-    });
-    setExpiringSoon(updatedExpiringSoon);
-  }, []);
+    const expiration = expirationDate.toDate ? expirationDate.toDate() : new Date(expirationDate);
+    const difference = expiration - today;
+    return Math.ceil(difference / (1000 * 60 * 60 * 24));
+  };
+
+  const groceriesWithDays = otherGroceries
+    .map(item => ({
+      ...item,
+      daysUntilExpiration: calculateDaysUntilExpiration(item.expirationDate),
+    }))
+    .filter(item => item.daysUntilExpiration !== null && item.daysUntilExpiration >= 0);
+
+  const sortedGroceries = groceriesWithDays.sort((a, b) => a.daysUntilExpiration - b.daysUntilExpiration);
+
+  const top5ExpiringSoon = sortedGroceries.slice(0, 5);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, user => {
@@ -98,6 +120,7 @@ const Groceries = () => {
               setQuantity(0);
               setValue(null);
               setModalVisible(false);
+              setDate(new Date());
             },
           },
           {
@@ -112,6 +135,7 @@ const Groceries = () => {
       setQuantity(0);
       setValue(null);
       setModalVisible(false);
+      setDate(new Date());
     }
   };
 
@@ -123,11 +147,13 @@ const Groceries = () => {
           name: text,
           category: selectedType,
           quantity: quantity,
+          expirationDate: date,
         });
         setText('');
         setQuantity(0);
         setValue(null);
         setSelectedType('');
+        setDate(new Date());
         setModalVisible(false);
         fetchGroceries(user.uid);
         setAddAnotherModalVisible(true);
@@ -188,6 +214,8 @@ const Groceries = () => {
         return;
       }
 
+      setIsDeleting(id);
+
       const groceryDocPath = `users/${user.uid}/groceries/${id}`;
       const groceryDocRef = doc(db, groceryDocPath);
 
@@ -195,9 +223,10 @@ const Groceries = () => {
 
       setOtherGroceries((prevGroceries) => prevGroceries.filter(item => item.id !== id));
       setExpiringSoon((prevGroceries) => prevGroceries.filter(item => item.id !== id));
-      console.log('Document successfully deleted!');
     } catch (error) {
       console.error("Error deleting document: ", error);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -218,6 +247,7 @@ const Groceries = () => {
       { cancelable: false }
     );
   };
+  ;
 
   return (
     <Provider>
@@ -265,6 +295,30 @@ const Groceries = () => {
                   </View>
                 </TouchableOpacity>
 
+
+                <View className="w-72 z-40 flex-row justify-between px-5 align-center mt-5">
+                  <DropDownPicker
+                    open={openDropdown}
+                    value={value}
+                    items={items}
+                    setOpen={setOpenDropdown}
+                    setValue={setValue}
+                    setItems={setItems}
+                    autoScroll={true}
+                    placeholder="Select Type"
+                    placeholderStyle={{ color: "#7b7b8b" }}
+                    arrowIconStyle={{ width: 20 }}
+                    maxHeight={150}
+                    itemSeparator={true}
+                    containerStyle={{ height: 50, width: '100%' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#e5e7eb', borderWidth: 2, borderRadius: 30 }}
+                    dropDownContainerStyle={{ borderColor: "#e5e7eb", borderWidth: 2, borderRadius: 30 }}
+                    itemSeparatorStyle={{ backgroundColor: "#e5e7eb", marginVertical: 6 }}
+                    textStyle={{ fontSize: 14, color: '#000000' }}
+                    onChangeValue={(item) => setSelectedType(item)}
+                  />
+                </View>
+
                 <View className="w-1/2 flex-row justify-between px-5 align-center mt-5">
                   <TouchableOpacity onPress={decrementCount}>
                     <MaterialCommunityIcons name="minus-circle" size={40} color="#16c359" />
@@ -280,25 +334,24 @@ const Groceries = () => {
                   qty
                 </Text>
 
-                <View className="w-72 flex-row justify-between px-5 align-center mt-5">
-                  <DropDownPicker
-                    open={open}
-                    value={value}
-                    items={items}
-                    setOpen={setOpen}
-                    setValue={setValue}
-                    setItems={setItems}
-                    placeholder="Select Type"
-                    placeholderStyle={{ color: "#7b7b8b" }}
-                    arrowIconStyle={{ width: 20 }}
-                    maxHeight={150}
-                    itemSeparator={true}
-                    containerStyle={{ height: 50, width: '100%' }}
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#e5e7eb', borderWidth: 2, borderRadius: 30 }}
-                    dropDownContainerStyle={{ borderColor: "#e5e7eb", borderWidth: 2, borderRadius: 30 }}
-                    itemSeparatorStyle={{ backgroundColor: "#e5e7eb", marginVertical: 6 }}
-                    textStyle={{ fontSize: 14, color: '#000000' }}
-                    onChangeValue={(item) => setSelectedType(item)}
+                <View className="items-center mt-5">
+                  <Text className="text-base text-black font-semibold">
+                    Expiration Date:
+                  </Text>
+                  <TouchableOpacity onPress={showDatePicker} className="w-50 bg-primary rounded-full p-3 mt-2.5 flex-row items-center justify-center">
+                    <Text className="text-white text-center font-bold text-base mr-2">
+                      {date.toDateString()}
+                    </Text>
+                    <MaterialIcons name='calendar-month' size={24} color="#fff" />
+                  </TouchableOpacity>
+                  <DateTimePickerModal
+                    isVisible={dateVisible}
+                    mode="date"
+                    // display={"inline"}
+                    onConfirm={handleConfirm}
+                    onCancel={hideDatePicker}
+                    buttonTextColorIOS='#16c359'
+                    textColor='#000'
                   />
                 </View>
 
@@ -352,12 +405,14 @@ const Groceries = () => {
         <View className="px-4 py-6">
           <Text className="text-xl font-bold mb-2">Expiring Soon</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-            {expiringSoon.map((item, index) => (
+            {top5ExpiringSoon.map((item, index) => (
               <View key={index} className="flex-col items-left mr-2">
                 <View className="bg-gray-200 rounded-lg px-4 py-2 mb-2 h-36 w-36">
                   <Text className="font-bold bg-gray-300 align-bottom">{item.name}</Text>
                 </View>
-                <Text className="font-medium">{item.daysUntilExpiration !== undefined ? `Expires in ${item.daysUntilExpiration} days` : 'No expiration date'}</Text>
+                <Text className="font-medium">
+                  {item.daysUntilExpiration !== undefined ? `Expires in ${item.daysUntilExpiration} days` : 'No expiration date'}
+                </Text>
               </View>
             ))}
           </ScrollView>
@@ -410,8 +465,12 @@ const Groceries = () => {
           <ScrollView style={{ maxHeight: 'calc(100% - 90px)' }}>
             {otherGroceries.map((item, index) => (
               <View key={index} className="bg-gray-200 rounded-lg px-4 py-2 m-2 h-24 flex-row justify-between items-center">
-                <Text>{item.name}</Text>
-                <Text>{item.quantity}</Text>
+                <View className="flex-col">
+                  <Text>{item.name}</Text>
+                  <Text>{item.quantity}</Text>
+                  <Text>{item.category}</Text>
+                  <Text>{formatDate(item.expirationDate)}</Text>
+                </View>
                 <View className="flex-col">
                   <TouchableOpacity className="mb-5" onPress={() => {
                     setEditText(item.name);
@@ -423,7 +482,11 @@ const Groceries = () => {
                     <MaterialIcons name="edit" size={24} color="#16c359" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => confirmDelete(item.id)}>
-                    <MaterialIcons name="delete" size={24} color="#DC143C" />
+                    {isDeleting === item.id ? (
+                      <ActivityIndicator size="small" color="#DC143C" />
+                    ) : (
+                      <MaterialIcons name="delete" size={24} color="#DC143C" />
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>

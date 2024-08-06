@@ -42,7 +42,7 @@ const SignUp = () => {
         navigation.navigate('(pages)');
         Alert.alert('Success', 'User registered successfully!');
       } else {
-        Alert.alert('Missing Fields', 'Please fill out all fields');
+        Alert.alert('Unable to Create Account', 'Please fill out all fields');
       }
     } catch (error) {
       Alert.alert('Error', error.message);

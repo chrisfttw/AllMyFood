@@ -28,7 +28,7 @@ const SignIn = () => {
         await signInWithEmailAndPassword(auth, email, password);
         navigation.navigate('(pages)'); 
       } else {
-        Alert.alert('Missing Fields', 'Please fill out all fields')
+        Alert.alert('Unable to Log In', 'Please enter a valid e-mail or password')
       }
     } catch (error) {
       console.error('Error:', error.message);
