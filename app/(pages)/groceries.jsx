@@ -6,7 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DropDownPicker from 'react-native-dropdown-picker';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { db, auth } from '../../config/firebase';
-import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc, Timestamp } from 'firebase/firestore';
+import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 const Groceries = () => {
@@ -14,17 +14,23 @@ const Groceries = () => {
   const [filterMenuVisible, setFilterMenuVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [addAnotherModalVisible, setAddAnotherModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [text, setText] = useState('');
+  const [editText, setEditText] = useState('');
   const textInputRef = useRef(null);
   const [quantity, setQuantity] = useState(0);
+  const [editQuantity, setEditQuantity] = useState(0);
   const [date, setDate] = useState(new Date());
+  const [editDate, setEditDate] = useState(new Date());
   const [dateVisible, setDateVisible] = useState(false);
   const [selectedType, setSelectedType] = useState('');
+  const [editSelectedType, setEditSelectedType] = useState('');
   const [openDropdown, setOpenDropdown] = useState(false);
   const [value, setValue] = useState(null);
+  const [editValue, setEditValue] = useState(null);
   const [items, setItems] = useState([
     { label: 'Fruit', value: 'fruit' },
-    { label: 'Vegatable', value: 'vegatable' },
+    { label: 'Vegetable', value: 'vegetable' },
     { label: 'Grain', value: 'grain' },
     { label: 'Protein', value: 'protein' },
     { label: 'Dairy', value: 'dairy' },
@@ -40,6 +46,16 @@ const Groceries = () => {
     }
   };
 
+  const incrementEditCount = () => {
+    setEditQuantity(editQuantity + 1);
+  };
+
+  const decrementEditCount = () => {
+    if (editQuantity > 0) {
+      setEditQuantity(editQuantity - 1);
+    }
+  };
+
   const showDatePicker = () => {
     setDateVisible(true);
   };
@@ -50,6 +66,11 @@ const Groceries = () => {
 
   const handleConfirm = (selectedDate) => {
     setDate(selectedDate);
+    hideDatePicker();
+  };
+
+  const handleEditConfirm = (selectedDate) => {
+    setEditDate(selectedDate);
     hideDatePicker();
   };
 
@@ -67,15 +88,15 @@ const Groceries = () => {
   const [user, setUser] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
+  const [selectedItem, setSelectedItem] = useState(null);
 
   const calculateDaysUntilExpiration = (expirationDate) => {
-    if (!expirationDate) return null;
     const today = new Date();
-    const expiration = expirationDate.toDate ? expirationDate.toDate() : new Date(expirationDate);
-    const difference = expiration - today;
-    return Math.ceil(difference / (1000 * 60 * 60 * 24));
+    const expDate = expirationDate.toDate ? expirationDate.toDate() : new Date(expirationDate);
+    const timeDiff = expDate.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0);
+    return Math.floor(timeDiff / (1000 * 60 * 60 * 24));
   };
+
 
   const groceriesWithDays = otherGroceries
     .map(item => ({
@@ -87,7 +108,6 @@ const Groceries = () => {
   const sortedGroceries = groceriesWithDays.sort((a, b) => a.daysUntilExpiration - b.daysUntilExpiration);
 
   const top5ExpiringSoon = sortedGroceries.slice(0, 5);
-
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, user => {
@@ -105,7 +125,6 @@ const Groceries = () => {
     const groceriesList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     setOtherGroceries(groceriesList);
   };
-
 
   const handleClose = () => {
     if (text.trim().length > 0) {
@@ -184,10 +203,11 @@ const Groceries = () => {
           name: editText,
           category: editSelectedType,
           quantity: editQuantity,
+          expirationDate: editDate,
         });
         setEditText('');
         setEditQuantity(0);
-        setValue(null);
+        setEditValue(null);
         setEditSelectedType('');
         setEditModalVisible(false);
         fetchGroceries(user.uid);
@@ -247,7 +267,18 @@ const Groceries = () => {
       { cancelable: false }
     );
   };
-  ;
+
+  const editGroceryItem = (item) => {
+    setEditText(item.name);
+    setEditSelectedType(item.category);
+    setEditValue(item.category);
+    setEditQuantity(item.quantity);
+    setEditDate(item.expirationDate.toDate ? item.expirationDate.toDate() : new Date(item.expirationDate));
+    setSelectedItem(item);
+    setEditModalVisible(true);
+  };
+
+  const editTextInputRef = useRef(null);
 
   return (
     <Provider>
@@ -411,12 +442,17 @@ const Groceries = () => {
                   <Text className="font-bold bg-gray-300 align-bottom">{item.name}</Text>
                 </View>
                 <Text className="font-medium">
-                  {item.daysUntilExpiration !== undefined ? `Expires in ${item.daysUntilExpiration} days` : 'No expiration date'}
+                  {item.daysUntilExpiration === 0
+                    ? 'Expires today'
+                    : item.daysUntilExpiration !== undefined
+                      ? `Expires in ${item.daysUntilExpiration} days`
+                      : 'No expiration date'}
                 </Text>
               </View>
             ))}
           </ScrollView>
         </View>
+
 
         <View className="flex-row justify-between items-center px-4 pt-4">
           <Menu
@@ -473,11 +509,7 @@ const Groceries = () => {
                 </View>
                 <View className="flex-col">
                   <TouchableOpacity className="mb-5" onPress={() => {
-                    setEditText(item.name);
-                    setEditQuantity(item.quantity);
-                    setEditSelectedType(item.category);
-                    setSelectedItem(item);
-                    setEditModalVisible(true);
+                    editGroceryItem(item)
                   }}>
                     <MaterialIcons name="edit" size={24} color="#16c359" />
                   </TouchableOpacity>
@@ -493,6 +525,121 @@ const Groceries = () => {
             ))}
           </ScrollView>
         </View>
+
+        <Modal
+          transparent={true}
+          visible={editModalVisible}
+          animationType="slide"
+          onRequestClose={() => setEditModalVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View className="flex-1 justify-center bg-black/50">
+              <View className="w-full h-full bg-white rounded-lg pt-16 pb-8 px-8 items-center">
+                <TouchableOpacity onPress={() => setEditModalVisible(false)} className="absolute top-0 left-0 px-7 mt-20">
+                  <MaterialIcons name="close" size={34} color="#16c359" />
+                </TouchableOpacity>
+
+                <View className="mt-44">
+                  <Text className="text-3xl font-bold">Edit Your Grocery</Text>
+                </View>
+                <TouchableOpacity onPress={() => editTextInputRef.current.focus()} className="w-64 mt-10">
+                  <View className="border-2 border-gray-200 w-full h-12 p-3 rounded-full focus:border-primary flex-row items-center">
+                    <TextInput
+                      ref={editTextInputRef}
+                      value={editText}
+                      onChangeText={setEditText}
+                      placeholder="Enter Grocery Name"
+                      placeholderTextColor="#7b7b8b"
+                      className="flex-1"
+                      style={{
+                        color: '#000',
+                        fontSize: 16,
+                        paddingLeft: 10,
+                        paddingRight: 10,
+                      }}
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                <View className="w-72 z-40 flex-row justify-between px-5 align-center mt-5">
+                  <DropDownPicker
+                    open={openDropdown}
+                    value={editValue}
+                    items={items}
+                    setOpen={setOpenDropdown}
+                    setValue={setEditValue}
+                    setItems={setItems}
+                    autoScroll={true}
+                    placeholder="Select Type"
+                    placeholderStyle={{ color: "#7b7b8b" }}
+                    arrowIconStyle={{ width: 20 }}
+                    maxHeight={150}
+                    itemSeparator={true}
+                    containerStyle={{ height: 50, width: '100%' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#e5e7eb', borderWidth: 2, borderRadius: 30 }}
+                    dropDownContainerStyle={{ borderColor: "#e5e7eb", borderWidth: 2, borderRadius: 30 }}
+                    itemSeparatorStyle={{ backgroundColor: "#e5e7eb", marginVertical: 6 }}
+                    textStyle={{ fontSize: 14, color: '#000000' }}
+                    onChangeValue={(item) => setEditSelectedType(item)}
+                  />
+                </View>
+
+                <View className="w-1/2 flex-row justify-between px-5 align-center mt-5">
+                  <TouchableOpacity onPress={() => setEditQuantity(editQuantity - 1)}>
+                    <MaterialCommunityIcons name="minus-circle" size={40} color="#16c359" />
+                  </TouchableOpacity>
+                  <Text className="text-3xl font-normal">
+                    {editQuantity}
+                  </Text>
+                  <TouchableOpacity onPress={() => setEditQuantity(editQuantity + 1)}>
+                    <MaterialCommunityIcons name="plus-circle" size={40} color="#16c359" />
+                  </TouchableOpacity>
+                </View>
+                <Text className="font-semibold">
+                  qty
+                </Text>
+
+                <View className="items-center mt-5">
+                  <Text className="text-base text-black font-semibold">
+                    Expiration Date:
+                  </Text>
+                  <TouchableOpacity onPress={showDatePicker} className="w-50 bg-primary rounded-full p-3 mt-2.5 flex-row items-center justify-center">
+                    <Text className="text-white text-center font-bold text-base mr-2">
+                      {editDate.toDateString()}
+                    </Text>
+                    <MaterialIcons name='calendar-month' size={24} color="#fff" />
+                  </TouchableOpacity>
+                  <DateTimePickerModal
+                    isVisible={dateVisible}
+                    mode="date"
+                    onConfirm={handleEditConfirm}
+                    onCancel={hideDatePicker}
+                    buttonTextColorIOS='#16c359'
+                    textColor='#000'
+                  />
+                </View>
+
+                <View className="absolute bottom-10 w-full justify-center align-center">
+                  <TouchableOpacity
+                    onPress={() => handleEditItem()}
+                    className="bg-primary py-4 rounded-full w-full h-14 mb-5"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text className="text-white text-center text-lg font-bold">Save Changes</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setEditModalVisible(false)} className="bg-slate-200 py-4 rounded-full w-full h-14 mb-5">
+                    <Text className="text-black text-center text-lg font-bold">Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
       </View>
     </Provider>
   );

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Alert, TextInput, Button, Modal, TouchableWithoutFeedback, Keyboard, TouchableOpacity } from 'react-native';
+import { View, Text, Alert, TextInput, Button, Modal, TouchableWithoutFeedback, Keyboard, TouchableOpacity, Image } from 'react-native';
 import { onAuthStateChanged, signOut, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { auth } from '../../config/firebase';
 import { useNavigation } from 'expo-router';
 import { Menu, Provider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import icons from '../../constants/icons';
 
 const Profile = () => {
   const [username, setUsername] = useState('');
@@ -13,6 +14,8 @@ const Profile = () => {
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const openMenu = () => setVisible(true);
   const closeMenu = () => setVisible(false);
@@ -89,22 +92,36 @@ const Profile = () => {
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View className="flex-1 justify-center items-center">
               <Text className="text-primary text-2xl font-bold mb-5">Update Password</Text>
-              <TextInput
-                placeholder="Current Password"
-                placeholderTextColor="#7b7b8b"
-                secureTextEntry
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                className="border-2 border-gray-200 w-72 h-12 mt-5 p-3 rounded-full focus:border-primary flex-row items-center"
-              />
-              <TextInput
-                placeholder="New Password"
-                placeholderTextColor="#7b7b8b"
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-                className="border-2 border-gray-200 w-72 h-12 mt-2.5 p-3 rounded-full focus:border-primary flex-row items-center"
-              />
+              <View className="border-2 border-gray-200 w-72 h-12 mt-5 p-3 rounded-full flex-row items-center">
+                <TextInput
+                  placeholder="Current Password"
+                  placeholderTextColor="#7b7b8b"
+                  secureTextEntry={!showCurrentPassword}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  className="flex-1"
+                />
+                <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)}>
+                  <Image source={!showCurrentPassword ? icons.eye : icons.eyeHide}
+                    style={{ width: 28, height: 28, opacity: 0.5 }}
+                    resizeMode='contain' />
+                </TouchableOpacity>
+              </View>
+              <View className="border-2 border-gray-200 w-72 h-12 mt-2.5 p-3 rounded-full flex-row items-center">
+                <TextInput
+                  placeholder="New Password"
+                  placeholderTextColor="#7b7b8b"
+                  secureTextEntry={!showNewPassword}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  className="flex-1"
+                />
+                <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)}>
+                  <Image source={!showNewPassword ? icons.eye : icons.eyeHide}
+                    style={{ width: 28, height: 28, opacity: 0.5 }}
+                    resizeMode='contain' />
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity onPress={handleChangePassword} className="bg-primary py-3 rounded-full w-56 h-12 mt-10 mb-2.5">
                 <Text className="text-white text-center text-base font-bold">Change Password</Text>
               </TouchableOpacity>
