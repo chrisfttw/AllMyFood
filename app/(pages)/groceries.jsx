@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Menu, Provider, Divider, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { db, auth } from '../../config/firebase';
 import { getFirestore, doc, deleteDoc, collection, getDocs, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import icons from '../../constants/icons';
 
 const Groceries = () => {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
@@ -28,6 +29,12 @@ const Groceries = () => {
   const [openDropdown, setOpenDropdown] = useState(false);
   const [value, setValue] = useState(null);
   const [editValue, setEditValue] = useState(null);
+  const [otherGroceries, setOtherGroceries] = useState([]);
+  const [user, setUser] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedFilter, setSelectedFilter] = useState('');
   const [items, setItems] = useState([
     { label: 'Fruit', value: 'fruit' },
     { label: 'Vegetable', value: 'vegetable' },
@@ -35,6 +42,16 @@ const Groceries = () => {
     { label: 'Protein', value: 'protein' },
     { label: 'Dairy', value: 'dairy' },
   ]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      if (user) {
+        setUser(user);
+        fetchGroceries(user.uid);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   const incrementCount = () => {
     setQuantity(quantity + 1);
@@ -84,19 +101,12 @@ const Groceries = () => {
     }
   };
 
-  const [otherGroceries, setOtherGroceries] = useState([]);
-  const [user, setUser] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
-
   const calculateDaysUntilExpiration = (expirationDate) => {
     const today = new Date();
     const expDate = expirationDate.toDate ? expirationDate.toDate() : new Date(expirationDate);
     const timeDiff = expDate.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0);
     return Math.floor(timeDiff / (1000 * 60 * 60 * 24));
   };
-
 
   const groceriesWithDays = otherGroceries
     .map(item => ({
@@ -108,16 +118,6 @@ const Groceries = () => {
   const sortedGroceries = groceriesWithDays.sort((a, b) => a.daysUntilExpiration - b.daysUntilExpiration);
 
   const top5ExpiringSoon = sortedGroceries.slice(0, 5);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, user => {
-      if (user) {
-        setUser(user);
-        fetchGroceries(user.uid);
-      }
-    });
-    return unsubscribe;
-  }, []);
 
   const fetchGroceries = async (uid) => {
     const groceriesRef = collection(db, `users/${uid}/groceries`);
@@ -162,11 +162,14 @@ const Groceries = () => {
     if (text.trim().length > 0 && selectedType && quantity > 0) {
       setIsSubmitting(true);
       try {
+        const timestamp = Timestamp.now();
         await addDoc(collection(db, `users/${user.uid}/groceries`), {
           name: text,
           category: selectedType,
           quantity: quantity,
           expirationDate: date,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         });
         setText('');
         setQuantity(0);
@@ -204,6 +207,7 @@ const Groceries = () => {
           category: editSelectedType,
           quantity: editQuantity,
           expirationDate: editDate,
+          updatedAt: Timestamp.now(),
         });
         setEditText('');
         setEditQuantity(0);
@@ -220,6 +224,7 @@ const Groceries = () => {
       Alert.alert('Please enter all fields');
     }
   };
+
 
   const handleDeleteItem = async (id) => {
     try {
@@ -242,7 +247,6 @@ const Groceries = () => {
       await deleteDoc(groceryDocRef);
 
       setOtherGroceries((prevGroceries) => prevGroceries.filter(item => item.id !== id));
-      setExpiringSoon((prevGroceries) => prevGroceries.filter(item => item.id !== id));
     } catch (error) {
       console.error("Error deleting document: ", error);
     } finally {
@@ -279,6 +283,13 @@ const Groceries = () => {
   };
 
   const editTextInputRef = useRef(null);
+
+  const capitalizeFirstLetter = (str) => {
+    return str
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
 
   return (
     <Provider>
@@ -433,98 +444,160 @@ const Groceries = () => {
           </View>
         </Modal>
 
-        <View className="px-4 py-6">
-          <Text className="text-xl font-bold mb-2">Expiring Soon</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
-            {top5ExpiringSoon.map((item, index) => (
-              <View key={index} className="flex-col items-left mr-2">
-                <View className="bg-gray-200 rounded-lg px-4 py-2 mb-2 h-36 w-36">
-                  <Text className="font-bold bg-gray-300 align-bottom">{item.name}</Text>
+        <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={1}>
+          <View className="px-4 py-6">
+            <Text className="text-xl font-bold mb-2">Expiring Soon</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
+              {top5ExpiringSoon.map((item, index) => (
+                <View key={index} className="flex-col items-left mr-2">
+                  <View className="bg-gray-200 rounded-lg px-4 py-2 mb-2 h-36 w-36">
+                    <Text className="font-bold bg-gray-300 align-bottom">{item.name}</Text>
+                  </View>
+                  <Text className="font-medium">
+                    {item.daysUntilExpiration === 0
+                      ? 'Expires today'
+                      : item.daysUntilExpiration !== undefined
+                        ? `Expires in ${item.daysUntilExpiration} days`
+                        : 'No expiration date'}
+                  </Text>
                 </View>
-                <Text className="font-medium">
-                  {item.daysUntilExpiration === 0
-                    ? 'Expires today'
-                    : item.daysUntilExpiration !== undefined
-                      ? `Expires in ${item.daysUntilExpiration} days`
-                      : 'No expiration date'}
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+              ))}
+            </ScrollView>
+          </View>
 
+          <View className="flex-row justify-between items-center px-4 pt-4">
+            <Menu
+              visible={sortMenuVisible}
+              onDismiss={() => setSortMenuVisible(false)}
+              anchor={
+                <TouchableOpacity onPress={() => setSortMenuVisible(true)} className="flex-row items-center">
+                  <Text className="text-base font-bold text-primary">Sort</Text>
+                  <MaterialIcons name='arrow-drop-down' size={20} color="#16c359" />
+                </TouchableOpacity>
+              }
+              style={{ marginTop: 25 }}
+              contentStyle={{ borderRadius: 5, backgroundColor: '#FFFFFF' }}
+            >
+              <Menu.Item
+                onPress={() => {
+                  const sortedGroceries = [...otherGroceries].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  );
+                  setOtherGroceries(sortedGroceries);
+                  setSortMenuVisible(false);
+                }}
+                title="A-Z"
+              />
+              <Divider />
+              <Menu.Item
+                onPress={() => {
+                  const sortedGroceries = [...otherGroceries].sort((a, b) =>
+                    b.name.localeCompare(a.name)
+                  );
+                  setOtherGroceries(sortedGroceries);
+                  setSortMenuVisible(false);
+                }}
+                title="Z-A"
+              />
+              <Divider />
+              <Menu.Item
+                onPress={() => {
+                  const sortedGroceries = [...otherGroceries].sort((a, b) => {
+                    const dateA = new Date(a.expirationDate.seconds * 1000);
+                    const dateB = new Date(b.expirationDate.seconds * 1000);
 
-        <View className="flex-row justify-between items-center px-4 pt-4">
-          <Menu
-            visible={sortMenuVisible}
-            onDismiss={() => setSortMenuVisible(false)}
-            anchor={
-              <TouchableOpacity onPress={() => setSortMenuVisible(true)} className="flex-row items-center">
-                <Text className="text-base font-bold text-primary">Sort</Text>
-                <MaterialIcons name='arrow-drop-down' size={20} color="#16c359" />
-              </TouchableOpacity>
-            }
-            style={{ marginTop: 25 }}
-            contentStyle={{ borderRadius: 5, backgroundColor: '#FFFFFF' }}
-          >
-            <Menu.Item onPress={() => { }} title="A-Z" />
-            <Divider />
-            <Menu.Item onPress={() => { }} title="Z-A" />
-            <Divider />
-            <Menu.Item onPress={() => { }} title="Expiring Soon" />
-            <Divider />
-            <Menu.Item onPress={() => { }} title="Expiring Latest" />
-          </Menu>
+                    return dateA - dateB;
+                  });
 
-          <Menu
-            visible={filterMenuVisible}
-            onDismiss={() => setFilterMenuVisible(false)}
-            anchor={
-              <TouchableOpacity onPress={() => setFilterMenuVisible(true)} className="flex-row items-center">
-                <Text className="text-base font-bold text-primary">Filter</Text>
-                <MaterialIcons name='arrow-drop-down' size={20} color="#16c359" />
-              </TouchableOpacity>
-            }
-            style={{ marginTop: 25 }}
-            contentStyle={{ borderRadius: 5, backgroundColor: '#FFFFFF' }}
-          >
-            <Menu.Item onPress={() => { }} title="A-Z" />
-            <Divider />
-            <Menu.Item onPress={() => { }} title="Most Popular" />
-            <Divider />
-            <Menu.Item onPress={() => { }} title="Newest" />
-          </Menu>
-        </View>
+                  setOtherGroceries(sortedGroceries);
+                  setSortMenuVisible(false);
+                }}
+                title="Expiring Soon"
+              />
+              <Divider />
+              <Menu.Item
+                onPress={() => {
+                  const sortedGroceries = [...otherGroceries].sort((a, b) => {
+                    const dateA = new Date(a.expirationDate.seconds * 1000)
+                    const dateB = new Date(b.expirationDate.seconds * 1000);
 
-        <View className="flex-1 px-4 pt-2">
-          <Text className="text-xl font-bold mb-2">Other Groceries</Text>
-          <ScrollView style={{ maxHeight: 'calc(100% - 90px)' }}>
-            {otherGroceries.map((item, index) => (
-              <View key={index} className="bg-gray-200 rounded-lg px-4 py-2 m-2 h-24 flex-row justify-between items-center">
-                <View className="flex-col">
-                  <Text>{item.name}</Text>
-                  <Text>{item.quantity}</Text>
-                  <Text>{item.category}</Text>
-                  <Text>{formatDate(item.expirationDate)}</Text>
+                    return dateB - dateA;
+                  });
+
+                  setOtherGroceries(sortedGroceries);
+                  setSortMenuVisible(false);
+                }}
+                title="Expiring Latest"
+              />
+            </Menu>
+
+            <Menu
+              visible={filterMenuVisible}
+              onDismiss={() => setFilterMenuVisible(false)}
+              anchor={
+                <TouchableOpacity onPress={() => setFilterMenuVisible(true)} className="flex-row items-center">
+                  <Text className="text-base font-bold text-primary">Filter</Text>
+                  <MaterialIcons name='arrow-drop-down' size={20} color="#16c359" />
+                </TouchableOpacity>
+              }
+              style={{ marginTop: 25 }}
+              contentStyle={{ borderRadius: 5, backgroundColor: '#FFFFFF' }}
+            >
+              <Menu.Item onPress={() => {
+                
+              }} title="Fruit" />
+              <Divider />
+              <Menu.Item onPress={() => ('')} title="Vegetable" />
+              <Divider />
+              <Menu.Item onPress={() => ('')} title="Grain" />
+              <Divider />
+              <Menu.Item onPress={() => ('')} title="Protein" />
+              <Divider />
+              <Menu.Item onPress={() => ('')} title="Dairy" />
+              <Divider />
+              <Menu.Item onPress={() => ('')} title="All" />
+            </Menu>
+          </View>
+
+          <View className="flex-1 px-4 pt-2">
+            <Text className="text-xl font-bold mb-2">Other Groceries</Text>
+            <ScrollView className="max-h-[calc(100%-90px)]">
+              {otherGroceries.map((item, index) => (
+                <View
+                  key={index}
+                  className="bg-gray-100 rounded-lg px-2 py-2 m-2 h-24 flex-row items-center"
+                >
+                  <View className="mr-4">
+                    <Image
+                      source={icons.groceryTest}
+                      className="w-20 h-20 rounded-lg"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-lg font-semibold" numberOfLines={1} ellipsizeMode='tail'>{item.name}</Text>
+                    <Text className="text-small">Quantity: {item.quantity}</Text>
+                    <Text className="text-small">Expires: {formatDate(item.expirationDate)}</Text>
+                    <Text className="text-small">{capitalizeFirstLetter(item.category)}</Text>
+                  </View>
+                  <View className="flex-col">
+                    <TouchableOpacity className="mb-5" onPress={() => {
+                      editGroceryItem(item)
+                    }}>
+                      <MaterialIcons name="edit" size={24} color="#16c359" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => confirmDelete(item.id)}>
+                      {isDeleting === item.id ? (
+                        <ActivityIndicator size="small" color="#E57373 " />
+                      ) : (
+                        <MaterialIcons name="delete" size={24} color="#E57373" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <View className="flex-col">
-                  <TouchableOpacity className="mb-5" onPress={() => {
-                    editGroceryItem(item)
-                  }}>
-                    <MaterialIcons name="edit" size={24} color="#16c359" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => confirmDelete(item.id)}>
-                    {isDeleting === item.id ? (
-                      <ActivityIndicator size="small" color="#DC143C" />
-                    ) : (
-                      <MaterialIcons name="delete" size={24} color="#DC143C" />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+              ))}
+            </ScrollView>
+          </View>
+        </ScrollView>
 
         <Modal
           transparent={true}
@@ -538,6 +611,34 @@ const Groceries = () => {
                 <TouchableOpacity onPress={() => setEditModalVisible(false)} className="absolute top-0 left-0 px-7 mt-20">
                   <MaterialIcons name="close" size={34} color="#16c359" />
                 </TouchableOpacity>
+
+                <View className="absolute top-32 w-full px-8 opacity-50">
+                  <View className="items-center mb-2">
+                    <Text className="text-base text-black font-semibold">
+                      Added On:
+                    </Text>
+                    <Text className="text-gray-600">
+                      {selectedItem?.createdAt?.toDate().toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      }) || 'N/A'}
+                    </Text>
+                  </View>
+
+                  <View className="items-center mb-2">
+                    <Text className="text-base text-black font-semibold">
+                      Last Updated:
+                    </Text>
+                    <Text className="text-gray-600">
+                      {selectedItem?.updatedAt?.toDate().toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      }) || 'N/A'}
+                    </Text>
+                  </View>
+                </View>
 
                 <View className="mt-44">
                   <Text className="text-3xl font-bold">Edit Your Grocery</Text>
