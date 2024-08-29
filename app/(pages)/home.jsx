@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Modal, TouchableWithoutFeedba
 import { MaterialIcons } from '@expo/vector-icons';
 import { Provider } from 'react-native-paper';
 import { db } from '../../config/firebase';
-import { collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, deleteDoc, updateDoc, getDoc, arrayRemove } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const Home = () => {
@@ -24,6 +24,9 @@ const Home = () => {
   useEffect(() => {
     fetchUserLists();
   }, []);
+
+  const auth = getAuth();
+  const user = auth.currentUser;
 
   const fetchUserLists = async () => {
     const auth = getAuth();
@@ -114,7 +117,6 @@ const Home = () => {
     }
 
     try {
-      // Check if a list with the same name already exists
       let finalListName = listName;
       const existingListNames = userLists.map(list => list.name);
       let counter = 1;
@@ -189,7 +191,7 @@ const Home = () => {
         setHasUnsavedChanges(true);
       }
     } catch (error) {
-      console.error("Error adding item to list:", error);
+
     }
   };
 
@@ -224,19 +226,49 @@ const Home = () => {
       const listRef = doc(db, `users/${user.uid}/lists`, listId);
       await deleteDoc(listRef);
 
-      Alert.alert("Success", "Grocery list deleted successfully");
-
-      fetchUserLists(); // Refresh the lists after deletion
+      fetchUserLists();
     } catch (error) {
       console.error("Error deleting grocery list:", error);
       Alert.alert("Error", "Failed to delete grocery list");
     }
   };
 
-  const handleDeleteItem = (item) => {
+  const deleteItemFromList = async (listName, item, user) => {
+    if (!user || !user.uid) {
+      console.error("User ID is not defined");
+      return;
+    }
+
+    try {
+      const listDocRef = doc(db, `users/${user.uid}/lists/${listName}`);
+
+      const listDoc = await getDoc(listDocRef);
+      if (!listDoc.exists()) {
+        console.error("List document does not exist");
+        return;
+      }
+
+      await updateDoc(listDocRef, {
+        items: arrayRemove(item),
+      });
+
+      setSelectedList(prevList => ({
+        ...prevList,
+        items: prevList.items.filter(listItem => listItem !== item)
+      }));
+
+      await fetchUserLists();
+
+    } catch (error) {
+      console.error("Error removing item:", error);
+      Alert.alert("Error", "Failed to remove the item from the list");
+    }
+  };
+
+  const handleDeleteItem = (listName, item, user) => {
     Alert.alert(
-      "Delete Item",
-      `Are you sure you want to delete "${item}"?`,
+      "Confirm Deletion",
+      `Are you sure you want to delete "${item}" from the list?`,
       [
         {
           text: "Cancel",
@@ -244,12 +276,8 @@ const Home = () => {
         },
         {
           text: "Delete",
-          onPress: () => {
-            // Add logic to delete the item from the list
-            const updatedItems = selectedList.items.filter(i => i !== item);
-            // Update state or database with the new list of items
-            updateItemList(updatedItems);
-          }
+          onPress: () => deleteItemFromList(listName, item, user),
+          style: "destructive"
         }
       ]
     );
@@ -286,7 +314,8 @@ const Home = () => {
                   <TouchableOpacity key={index} onPress={() => openDetailsModal(item)}>
                     <View className="flex-col items-left mr-2">
                       <View className="bg-gray-200 rounded-lg px-4 py-2 mb-2 h-36 w-36">
-                        <Text className="font-bold bg-gray-300 align-bottom">{item.name}</Text>
+                        <Text className="font-bold align-bottom font-bold text-lg">{item.name}</Text>
+                        <Text className="text-base">{item.items ? `Items: ${item.items.length}` : 'No items'}</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -308,6 +337,7 @@ const Home = () => {
           visible={listsModalVisible}
           animationType="slide"
           onRequestClose={() => handleCreateListsClose()}
+          style={{ position: 'absolute', zIndex: 1 }}
         >
           <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <View className="flex-1 justify-center bg-black/50">
@@ -323,27 +353,30 @@ const Home = () => {
                     <MaterialIcons name="add" size={34} color="#16c359" />
                   </TouchableOpacity>
                 </View>
-                <FlatList
-                  data={userLists}
-                  keyExtractor={(item) => item.id.toString()}
-                  renderItem={({ item }) => (
-                    <View className="px-4 py-2 border-b border-gray-300 flex-row justify-between items-center">
-                      <View style={{ flex: 1 }}>
+                <ScrollView
+                  contentContainerStyle={{ flexGrow: 1, paddingVertical: 4 }}
+                  showsVerticalScrollIndicator={true}
+                >
+                  {userLists.map((item) => (
+                    <View key={item.id} className="px-4 py-2 border-b border-gray-300 flex-row justify-between items-center">
+                      <TouchableOpacity style={{ flex: 1 }} onPress={() => openDetailsModal(item)}>
                         <Text className="text-lg font-bold">{item.name}</Text>
                         {item.items && item.items.length > 0 ? (
                           <Text className="text-gray-600">Items: {item.items.join(', ')}</Text>
                         ) : (
                           <Text className="text-gray-500">No items</Text>
                         )}
-                      </View>
-                      <TouchableOpacity onPress={() => confirmDeleteList(item.id)} style={{ paddingLeft: 10 }}>
-                        <MaterialIcons name="delete" size={24} color="#ff0000" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => confirmDeleteList(item.id)}
+                        style={{ paddingLeft: 10 }}
+                      >
+                        <MaterialIcons name="delete" size={24} color="#E57373" />
                       </TouchableOpacity>
                     </View>
-                  )}
-                  contentContainerStyle={{ flexGrow: 1, paddingVertical: 4 }}
-                  showsVerticalScrollIndicator={true}
-                />
+                  ))}
+                </ScrollView>
+
               </View>
             </View>
           </KeyboardAvoidingView>
@@ -354,6 +387,7 @@ const Home = () => {
           visible={createListsModalVisible}
           animationType="slide"
           onRequestClose={() => handleCreateListsClose()}
+          style={{ position: 'absolute', zIndex: 2 }}
         >
           <View className="flex-1 justify-center bg-black/50">
             <View className="w-full h-full bg-white rounded-lg pt-16 px-8">
@@ -452,6 +486,7 @@ const Home = () => {
           visible={detailsModalVisible}
           animationType="slide"
           onRequestClose={() => closeDetailsModal()}
+          style={{ position: 'absolute', zIndex: 3 }}
         >
           <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <View className="flex-1 justify-center bg-black/50">
@@ -468,8 +503,11 @@ const Home = () => {
                 <ScrollView style={{ maxHeight: screenHeight * 0.9 }}>
                   {selectedList && selectedList.items && selectedList.items.length > 0 ? (
                     selectedList.items.map((item, index) => (
-                      <View key={index} className="px-4 py-2 border-b border-gray-300">
+                      <View key={index} className="px-4 py-2 border-b border-gray-300 flex-row justify-between items-center">
                         <Text className="text-lg">{item}</Text>
+                        <TouchableOpacity onPress={() => handleDeleteItem(selectedList.name, item, user)}>
+                          <MaterialIcons name="delete" size={24} color="#E57373" />
+                        </TouchableOpacity>
                       </View>
                     ))
                   ) : (
@@ -480,7 +518,6 @@ const Home = () => {
             </View>
           </KeyboardAvoidingView>
         </Modal>
-
       </View>
     </Provider>
   );

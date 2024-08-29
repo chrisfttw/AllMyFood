@@ -587,7 +587,7 @@ const Groceries = () => {
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => confirmDelete(item.id)}>
                       {isDeleting === item.id ? (
-                        <ActivityIndicator size="small" color="#E57373 " />
+                        <ActivityIndicator size="small" color="#E57373" />
                       ) : (
                         <MaterialIcons name="delete" size={24} color="#E57373" />
                       )}
