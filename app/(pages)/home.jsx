@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, TouchableWithoutFeedback, Keyboard, TextInput, ActivityIndicator, Dimensions, Alert, FlatList, KeyboardAvoidingView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Provider } from 'react-native-paper';
+import { Divider, Menu, Provider, Portal } from 'react-native-paper';
 import { db } from '../../config/firebase';
 import { collection, getDocs, setDoc, doc, deleteDoc, updateDoc, getDoc, arrayRemove } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -18,7 +18,12 @@ const Home = () => {
   const [userLists, setUserLists] = useState([]);
   const [selectedList, setSelectedList] = useState(null);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [detailsInMenuModalVisible, setDetailsInMenuModalVisible] = useState(false);
+  const [editSearchVisible, setEditSearchVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [detailsOptionsVisible, setDetailsOptionsVisible] = useState(false);
 
+  const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
 
   useEffect(() => {
@@ -160,9 +165,9 @@ const Home = () => {
       const snapshot = await getDocs(groceriesRef);
       const allGroceries = snapshot.docs.map(doc => doc.id);
 
-      const filteredGroceries = allGroceries.filter(item =>
-        item.toLowerCase().startsWith(queryString.toLowerCase())
-      );
+      const filteredGroceries = allGroceries
+        .filter(item => item.toLowerCase().includes(queryString.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b));
 
       setGroceries(filteredGroceries);
     } catch (error) {
@@ -227,6 +232,8 @@ const Home = () => {
       await deleteDoc(listRef);
 
       fetchUserLists();
+      closeDetailsModal();
+      closeDetailsInMenuModal();
     } catch (error) {
       console.error("Error deleting grocery list:", error);
       Alert.alert("Error", "Failed to delete grocery list");
@@ -284,6 +291,7 @@ const Home = () => {
   };
 
   const openDetailsModal = (list) => {
+    setListsModalVisible(false);
     setSelectedList(list);
     setDetailsModalVisible(true);
   };
@@ -291,12 +299,33 @@ const Home = () => {
   const closeDetailsModal = () => {
     setSelectedList(null);
     setDetailsModalVisible(false);
+    setIsEditMode(false);
+  };
+
+  const openDetailsInMenuModal = (list) => {
+    setListsModalVisible(false);
+    setSelectedList(list);
+    setDetailsInMenuModalVisible(true);
+  }
+
+  const closeDetailsInMenuModal = () => {
+    setSelectedList(null);
+    setDetailsInMenuModalVisible(false);
+    setListsModalVisible(true);
+    setIsEditMode(false);
+  }
+
+  const openEditModal = (list) => {
+    setSelectedList(list);
+    setListName(list.name);
+    setSelectedGroceries(list.items || []);
+    setEditSearchVisible(true);
   };
 
   return (
     <Provider>
       <View className="bg-white flex-1">
-        <View className="flex-row justify-between items-center px-4 pt-12 h-1/8">
+        <View className="flex-row justify-between items-center px-4 pt-20 h-1/8">
           <Text className="text-3xl font-bold">All My Groceries</Text>
         </View>
 
@@ -359,7 +388,7 @@ const Home = () => {
                 >
                   {userLists.map((item) => (
                     <View key={item.id} className="px-4 py-2 border-b border-gray-300 flex-row justify-between items-center">
-                      <TouchableOpacity style={{ flex: 1 }} onPress={() => openDetailsModal(item)}>
+                      <TouchableOpacity style={{ flex: 1 }} onPress={() => openDetailsInMenuModal(item)}>
                         <Text className="text-lg font-bold">{item.name}</Text>
                         {item.items && item.items.length > 0 ? (
                           <Text className="text-gray-600">Items: {item.items.join(', ')}</Text>
@@ -486,24 +515,139 @@ const Home = () => {
           visible={detailsModalVisible}
           animationType="slide"
           onRequestClose={() => closeDetailsModal()}
-          style={{ position: 'absolute', zIndex: 3 }}
         >
           <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
             <View className="flex-1 justify-center bg-black/50">
-              <View className="w-full h-full bg-white rounded-lg pt-16 px-8">
-                <View className="flex-row justify-between items-center mb-5">
+              <View className="w-full h-full bg-white rounded-lg pt-20 px-8">
+                <View className="flex-row justify-between items-center mb-7">
                   <View className="flex-row items-center">
                     <TouchableOpacity onPress={() => closeDetailsModal()}>
                       <MaterialIcons name="arrow-back-ios" size={28} color="#16c359" />
                     </TouchableOpacity>
+                    <Text className="text-3xl font-bold">
+                      {selectedList ? selectedList.name : 'List Details'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setIsEditMode(!isEditMode)}
+                    className="py-0 px-5 bg-primary items-center rounded-full"
+                  >
+                    <Text className="text-white text-lg font-semibold">Edit</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isEditMode && (
+                  <View className="border-b-0 border-gray-400 mb-4">
+                    <View>
+                      <View
+                        className={`flex-row items-center border border-gray-300 p-2 mb-0 h-12 ${searchQuery.length && groceries.length > 0 ? 'rounded-tl-2xl rounded-tr-2xl' : 'rounded-2xl'
+                          }`}
+                      >
+                        <MaterialIcons
+                          name="search"
+                          size={25}
+                          color="#808080"
+                          className="absolute left-0"
+                        />
+                        <TextInput
+                          placeholder="Search For Groceries To Add"
+                          placeholderTextColor="gray"
+                          value={searchQuery}
+                          onChangeText={text => handleSearch(text)}
+                          className="flex-1 px-2"
+                        />
+                        {searchQuery.length > 0 && (
+                          <TouchableOpacity onPress={handleClearSearch}>
+                            <MaterialIcons name="cancel" size={24} color="gray" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {groceries.length > 0 && (
+                        <View
+                          className="rounded-bl-2xl rounded-br-2xl border border-gray-300"
+                          style={{
+                            maxHeight: screenHeight * 0.25,
+                            overflow: 'hidden',
+                            marginTop: -1,
+                          }}
+                        >
+                          <ScrollView
+                            showsVerticalScrollIndicator={true}
+                            contentContainerStyle={{ paddingVertical: 4 }}
+                          >
+                            {groceries.map((item, index) => (
+                              <View key={index}>
+                                <TouchableOpacity
+                                  className="px-4"
+                                  onPress={() => handleAddToList(item)}
+                                >
+                                  <Text className="text-lg font-semibold">{item}</Text>
+                                </TouchableOpacity>
+                                {index < groceries.length - 1 && (
+                                  <View className="border-b border-gray-300 my-1 w-full" />
+                                )}
+                              </View>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                <ScrollView style={{ maxHeight: screenHeight * 0.9 }}>
+                  {selectedList && selectedList.items && selectedList.items.length > 0 ? (
+                    selectedList.items.map((item, index) => (
+                      <View key={index} className="px-0 py-2 border-b border-gray-300 flex-row justify-between items-center">
+                        <Text className="text-lg">{item}</Text>
+                        {isEditMode && (
+                          <TouchableOpacity onPress={() => handleDeleteItem(selectedList.name, item, user)}>
+                            <MaterialIcons name="delete" size={24} color="#E57373" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))
+                  ) : (
+                    <Text className="text-gray-500 text-center">No items available</Text>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+
+        <Modal
+          transparent={true}
+          visible={detailsInMenuModalVisible}
+          animationType="slide"
+          onRequestClose={() => closeDetailsInMenuModal()}
+          style={{ position: 'absolute', zIndex: 3 }}
+        >
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+            <View className="flex-1 justify-center bg-black/50">
+              <View className="w-full h-full bg-white rounded-lg pt-20 px-8">
+                <View className="flex-row justify-between items-center mb-7">
+                  <View className="flex-row items-center">
+                    <TouchableOpacity onPress={() => closeDetailsInMenuModal()}>
+                      <MaterialIcons name="arrow-back-ios" size={28} color="#16c359" />
+                    </TouchableOpacity>
                     <Text className="text-3xl font-bold">{selectedList ? selectedList.name : 'List Details'}</Text>
                   </View>
+                  <TouchableOpacity
+                    className="fixed right-0"
+                    onPress={() => confirmDeleteList(selectedList.id)}
+                    style={{ paddingLeft: 10 }}
+                  >
+                    <MaterialIcons name="delete" size={24} color="#E57373" />
+                  </TouchableOpacity>
                 </View>
 
                 <ScrollView style={{ maxHeight: screenHeight * 0.9 }}>
                   {selectedList && selectedList.items && selectedList.items.length > 0 ? (
                     selectedList.items.map((item, index) => (
-                      <View key={index} className="px-4 py-2 border-b border-gray-300 flex-row justify-between items-center">
+                      <View key={index} className="px-0 py-2 border-b border-gray-300 flex-row justify-between items-center">
                         <Text className="text-lg">{item}</Text>
                         <TouchableOpacity onPress={() => handleDeleteItem(selectedList.name, item, user)}>
                           <MaterialIcons name="delete" size={24} color="#E57373" />
